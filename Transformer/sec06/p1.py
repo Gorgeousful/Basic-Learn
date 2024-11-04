@@ -1,14 +1,10 @@
-# 多头注意力机制
-import torch
-import torch.nn as nn
-from d2l import torch as d2l
 import math
-import torch.nn.functional as F
+import torch
+from torch import nn
+from d2l import torch as d2l
+import matplotlib.pyplot as plt
 
-#@save
-#假设num_hiddens=100 num_heads=5 则是先分为5x20, 对每20个隐层一个注意力头操作 后级联为100
-#而非直接是原100个hiddens进行操作后级联为500，再通过W0压缩为100
-#多头注意力融合了来自于多个注意力汇聚的不同知识，这些知识的不同来源于相同的查询、键和值的不同的子空间表示。
+#1 多头注意力机制+自注意力机制
 class MultiHeadAttention(nn.Module):
     """多头注意力"""
     def __init__(self, key_size, query_size, value_size, num_hiddens,
@@ -45,7 +41,6 @@ class MultiHeadAttention(nn.Module):
         # output_concat的形状:(batch_size，查询的个数，num_hiddens)
         output_concat = transpose_output(output, self.num_heads) #(10,4,20) -> (2,4,100)
         return self.W_o(output_concat)
-
 class DotProductAttention(nn.Module):
     """缩放点积注意力"""
     def __init__(self, dropout, **kwargs):
@@ -85,14 +80,44 @@ def transpose_output(X, num_heads):
     X = X.permute(0, 2, 1, 3)
     return X.reshape(X.shape[0], X.shape[1], -1)
 
-# test
 num_hiddens, num_heads = 100, 5
-# key_size, query_size, value_size, num_hiddens, num_heads, dropout
+# key_size, query_size, value_size = num_hiddens, num_hiddens, num_hiddens
 attention = MultiHeadAttention(num_hiddens, num_hiddens, num_hiddens, num_hiddens, num_heads, 0.5)
-attention.eval()
+print(attention.eval())
 
-batch_size, num_queries = 2, 4
-num_kvpairs, valid_lens =  6, torch.tensor([3, 2])
-X = torch.ones((batch_size, num_queries, num_hiddens))
-Y = torch.ones((batch_size, num_kvpairs, num_hiddens))
-res = attention(X, Y, Y, valid_lens).shape #q k v valid_lens
+batch_size, num_queries, valid_lens = 2, 4, torch.tensor([3, 2])
+X = torch.ones((batch_size, num_queries, num_hiddens)) #(2,4,100)
+res = attention(X, X, X, valid_lens) #(2,4,100)
+print(res.shape)
+
+#2 位置编码
+#@save
+class PositionalEncoding(nn.Module):
+    """位置编码"""
+    def __init__(self, num_hiddens, dropout, max_len=1000):
+        super(PositionalEncoding, self).__init__()
+        self.dropout = nn.Dropout(dropout)
+        # 创建一个足够长的P
+        self.P = torch.zeros((1, max_len, num_hiddens))
+        X = ( torch.arange(max_len, dtype=torch.float32).reshape(-1, 1) /
+             torch.pow(10000, torch.arange(0, num_hiddens, 2, dtype=torch.float32) / num_hiddens) ) #(1000,32) 利用了广播机制
+        self.P[:, :, 0::2] = torch.sin(X)
+        self.P[:, :, 1::2] = torch.cos(X)
+
+    def forward(self, X):
+        X = X + self.P[:, :X.shape[1], :].to(X.device)
+        return self.dropout(X)
+
+encoding_dim, num_steps = 32, 60
+pos_encoding = PositionalEncoding(encoding_dim, 0)
+pos_encoding.eval()
+X = pos_encoding(torch.zeros((1, num_steps, encoding_dim))) #X进行位置编码前是全1序列
+P = pos_encoding.P[:, :X.shape[1], :]
+d2l.plot(torch.arange(num_steps), P[0, :, 6:10].T, xlabel='Row (position)',
+         figsize=(6, 2.5), legend=["Col %d" % d for d in torch.arange(6, 10)])
+plt.show()
+
+P = P[0, :, :].unsqueeze(0).unsqueeze(0)
+d2l.show_heatmaps(P, xlabel='Column (encoding dimension)',
+                  ylabel='Row (position)', figsize=(3.5, 4), cmap='Blues')
+plt.show()

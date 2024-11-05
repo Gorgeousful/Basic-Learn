@@ -1,3 +1,12 @@
+# 实现了多种图像增强方法:
+# 1. HSV和对比度调整
+# 2. 高斯噪声和椒盐噪声
+# 3. Random Erasing随机擦除
+# 4. CutOut随机裁剪
+# 5. Hide-and-Seek网格隐藏
+# 6. Grid Mask网格掩码
+# 包含完整的实现和测试代码
+
 import cv2
 import numpy as np
 import random
@@ -265,5 +274,3 @@ if __name__ == '__main__':
     cv2.imshow('Grid Mask Image', grid_mask_image)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
-    
-    
